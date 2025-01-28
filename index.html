@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Task Quest Pro</title>
+    <style>
+        :root {
+            --primary: #2A2A72;
+            --secondary: #009FFD;
+            --accent: #FFA400;
+            --background: #f0f2f5;
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: var(--background);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            padding: 2rem;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            border-radius: 15px;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .task-creator {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        input, button, select {
+            padding: 0.8rem;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        button {
+            background: var(--accent);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        #path-container {
+            position: relative;
+            height: 120px;
+            margin: 2rem 0;
+        }
+
+        #path {
+            height: 8px;
+            background: #ddd;
+            border-radius: 4px;
+            position: absolute;
+            top: 60px;
+            left: 0;
+            right: 0;
+        }
+
+        #progress {
+            height: 100%;
+            background: var(--secondary);
+            width: 0;
+            transition: width 0.5s ease;
+            border-radius: 4px;
+        }
+
+        .checkpoint {
+            width: 24px;
+            height: 24px;
+            background: white;
+            border: 3px solid #ddd;
+            border-radius: 50%;
+            position: absolute;
+            top: 50px;
+            transform: translateX(-50%);
+            transition: all 0.3s ease;
+        }
+
+        .checkpoint.completed {
+            background: var(--accent);
+            border-color: var(--accent);
+            box-shadow: 0 0 12px rgba(255,164,0,0.4);
+        }
+
+        #character {
+            width: 40px;
+            height: 40px;
+            background: url('data:image/svg+xml,<svg viewBox="0 0 24 24" fill="%232a2a72" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5 14.5 7.62 14.5 9 13.38 11.5 12 11.5z"/></svg>');
+            position: absolute;
+            top: 30px;
+            left: -20px;
+            transition: left 1s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .task-item {
+            display: grid;
+            grid-template-columns: 1fr auto auto;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            margin: 0.5rem 0;
+            background: #f8f9fa;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+        }
+
+        .time-display {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 0.5rem;
+        }
+
+        .delete-btn {
+            background: #ff4444;
+            color: white;
+            margin-left: 0.5rem;
+        }
+
+        #time-summary {
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .current-badge {
+            background: var(--accent);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Task Quest 🗺️</h1>
+            <p>Your Daily Adventure Awaits!</p>
+            <div class="total-xp">Total XP: <span id="xp">0</span></div>
+        </div>
+
+        <div class="task-creator">
+            <input type="text" id="newTask" placeholder="Quest name">
+            <input type="number" id="newXP" placeholder="XP Value" min="10" value="50">
+            <button onclick="addNewTask()">Add Quest ➕</button>
+        </div>
+
+        <div id="path-container">
+            <div id="path">
+                <div id="progress"></div>
+            </div>
+            <div id="character"></div>
+        </div>
+
+        <div id="time-summary">
+            <h3>Time Tracking ⏳</h3>
+            <p>Total Time Spent: <span id="total-time">00:00:00</span></p>
+            <p>Current Task Time: <span id="current-task-time">00:00:00</span></p>
+        </div>
+
+        <div class="task-list">
+            <h2>Your Quests</h2>
+            <ul id="tasks"></ul>
+        </div>
+    </div>
+
+    <script>
+        let tasks = JSON.parse(localStorage.getItem('tasks')) || [];
+        let totalXP = parseInt(localStorage.getItem('totalXP')) || 0;
+        let totalSeconds = parseInt(localStorage.getItem('totalSeconds')) || 0;
+        let timerInterval = null;
+
+        function saveState() {
+            localStorage.setItem('tasks', JSON.stringify(tasks));
+            localStorage.setItem('totalXP', totalXP);
+            localStorage.setItem('totalSeconds', totalSeconds);
+        }
+
+        function initializeApp() {
+            updateTaskList();
+            updatePath();
+            updateProgress();
+            document.getElementById('xp').textContent = totalXP;
+            document.getElementById('total-time').textContent = formatTime(totalSeconds);
+        }
+
+        function addNewTask() {
+            const taskInput = document.getElementById('newTask');
+            const xpInput = document.getElementById('newXP');
+            
+            if (!taskInput.value.trim() || !xpInput.value) {
+                alert('Please fill both fields!');
+                return;
+            }
+
+            tasks.push({
+                name: taskInput.value.trim(),
+                xp: parseInt(xpInput.value) || 50,
+                completed: false,
+                current: false,
+                timeSpent: 0,
+                startTime: null
+            });
+
+            taskInput.value = '';
+            xpInput.value = '50';
+            initializeApp();
+            saveState();
+        }
+
+        function deleteTask(index) {
+            if (confirm('Are you sure you want to delete this task?')) {
+                const wasCurrent = tasks[index].current;
+                tasks.splice(index, 1);
+                
+                if (wasCurrent) {
+                    stopTimer();
+                }
+                
+                initializeApp();
+                saveState();
+            }
+        }
+
+        function formatTime(seconds) {
+            const hrs = Math.floor(seconds / 3600);
+            const mins = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        }
+
+        function setCurrentTask(index) {
+            stopTimer();
+            
+            // Toggle current task
+            if (tasks[index].current) {
+                tasks[index].current = false;
+                tasks[index].timeSpent += Math.floor((Date.now() - tasks[index].startTime) / 1000);
+                tasks[index].startTime = null;
+            } else {
+                // Clear current from other tasks
+                tasks.forEach(task => {
+                    if (task.current) {
+                        task.timeSpent += Math.floor((Date.now() - task.startTime) / 1000);
+                        task.current = false;
+                        task.startTime = null;
+                    }
+                });
+                
+                // Set new current task
+                tasks[index].current = true;
+                tasks[index].startTime = Date.now();
+                startTimer();
+            }
+            
+            initializeApp();
+            saveState();
+        }
+
+        function startTimer() {
+            if (!timerInterval) {
+                timerInterval = setInterval(() => {
+                    totalSeconds++;
+                    document.getElementById('total-time').textContent = formatTime(totalSeconds);
+                    
+                    const currentTask = tasks.find(t => t.current);
+                    if (currentTask) {
+                        const taskTime = currentTask.timeSpent + 
+                            Math.floor((Date.now() - currentTask.startTime) / 1000);
+                        document.getElementById('current-task-time').textContent = formatTime(taskTime);
+                    } else {
+                        stopTimer();
+                    }
+                }, 1000);
+            }
+        }
+
+        function stopTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+        }
+
+        function completeTask(index) {
+            if (!tasks[index].current) return;
+            
+            stopTimer();
+            tasks[index].completed = true;
+            tasks[index].current = false;
+            tasks[index].timeSpent += Math.floor((Date.now() - tasks[index].startTime) / 1000);
+            totalXP += tasks[index].xp;
+            
+            initializeApp();
+            saveState();
+        }
+
+        function updatePath() {
+            const container = document.getElementById('path-container');
+            container.innerHTML = `
+                <div id="path">
+                    <div id="progress"></div>
+                </div>
+                <div id="character"></div>
+            `;
+
+            tasks.forEach((task, index) => {
+                const checkpoint = document.createElement('div');
+                checkpoint.className = `checkpoint ${task.completed ? 'completed' : ''}`;
+                checkpoint.style.left = `${(index + 1) * (100 / (tasks.length + 1))}%`;
+                container.appendChild(checkpoint);
+            });
+
+            updateCharacterPosition();
+        }
+
+        function updateCharacterPosition() {
+            const character = document.getElementById('character');
+            const currentTask = tasks.find(t => t.current);
+            if (currentTask) {
+                const index = tasks.indexOf(currentTask);
+                const checkpointPosition = (index + 1) * (100 / (tasks.length + 1));
+                character.style.left = `calc(${checkpointPosition}% - 20px)`;
+            } else {
+                character.style.left = '-20px';
+            }
+        }
+
+        function updateProgress() {
+            const progress = document.getElementById('progress');
+            const completedCount = tasks.filter(t => t.completed).length;
+            if (tasks.length > 0) {
+                progress.style.width = `${(completedCount / tasks.length) * 100}%`;
+            }
+        }
+
+        function updateTaskList() {
+            const taskList = document.getElementById('tasks');
+            taskList.innerHTML = '';
+
+            tasks.forEach((task, index) => {
+                const li = document.createElement('li');
+                li.className = `task-item ${task.completed ? 'completed' : ''}`;
+                li.innerHTML = `
+                    <div>
+                        ${task.name}
+                        ${task.current ? '<span class="current-badge">Current Quest ⭐</span>' : ''}
+                    </div>
+                    <div>
+                        ${task.xp} XP
+                        <div class="time-display">${formatTime(task.timeSpent)}</div>
+                    </div>
+                    <div>
+                        <button onclick="setCurrentTask(${index})" ${task.completed ? 'disabled' : ''}>
+                            ${task.current ? '⏸️ Pause' : '▶️ Start'}
+                        </button>
+                        <button onclick="completeTask(${index})" ${!task.current || task.completed ? 'disabled' : ''}>
+                            ✅ Complete
+                        </button>
+                        <button class="delete-btn" onclick="deleteTask(${index})">🗑️</button>
+                    </div>
+                `;
+                taskList.appendChild(li);
+            });
+        }
+
+        // Initialize on load
+        window.addEventListener('DOMContentLoaded', () => {
+            // Restore timer if current task exists
+            const currentTask = tasks.find(t => t.current);
+            if (currentTask) {
+                currentTask.startTime = Date.now() - (currentTask.timeSpent * 1000);
+                startTimer();
+            }
+            initializeApp();
+        });
+    </script>
+</body>
+</html>
